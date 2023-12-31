@@ -36,7 +36,14 @@ impl<'a> Upstream<'a> {
     pub(crate) fn enqueue(&mut self, event: NegiconEvent) -> Result<(), UpstreamError> {
         match self.buffer.push(event.serialize()) {
             Ok(_) => Ok(()),
-            Err(_) => panic!("Upstream buffer overflow"),
+            Err(_) => panic!("Upstream buffer overflow"), //TODO probably shouldn't panic
+        }
+    }
+
+    pub(crate) fn enqueue_raw(&mut self, event: &[u8; 8]) -> Result<(), UpstreamError> {
+        match self.buffer.push(*event) {
+            Ok(_) => Ok(()),
+            Err(_) => Ok(()), //TODO error handling
         }
     }
 

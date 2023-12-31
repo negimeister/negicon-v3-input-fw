@@ -1,4 +1,4 @@
-const BUFFER_SIZE: usize = 100; // Adjust the size as needed
+const BUFFER_SIZE: usize = 128; // Adjust the size as needed
 
 pub(crate) struct RingBuffer<T> {
     buffer: [Option<T>; BUFFER_SIZE],

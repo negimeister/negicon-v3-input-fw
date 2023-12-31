@@ -7,6 +7,7 @@ use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
+use ux::u7;
 
 use crate::negicon_event::{NegiconEvent, NegiconEventType};
 
@@ -147,7 +148,8 @@ impl MlxDownstream {
             self.button_state = ButtonState::Down;
             Some(NegiconEvent::new(
                 NegiconEventType::Input,
-                self.id.get_value() + 1 as u16,
+                self.id.get_value(),
+                u7::new(1),
                 1,
                 0,
                 0,
@@ -157,7 +159,8 @@ impl MlxDownstream {
             self.lock_countdown = 100;
             Some(NegiconEvent::new(
                 NegiconEventType::Input,
-                self.id.get_value() + 1 as u16,
+                self.id.get_value(),
+                u7::new(1),
                 -1,
                 0,
                 0,
@@ -245,6 +248,7 @@ where
                         Ok(Some(NegiconEvent::new(
                             NegiconEventType::Input,
                             self.id.get_value() as u16,
+                            u7::new(0),
                             self.calculate_output(a.data),
                             0,
                             0,

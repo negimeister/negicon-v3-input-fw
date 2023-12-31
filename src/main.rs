@@ -10,7 +10,9 @@ use defmt_rtt as _;
 use embedded_alloc::Heap;
 use embedded_hal::{digital::v2::PinState, spi::MODE_1, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
+use negicon_event::NegiconEventType;
 use panic_probe as _;
+use upstream::ringbuf::RingBuffer;
 use usb_device::{
     class_prelude::UsbBusAllocator,
     prelude::{UsbDeviceBuilder, UsbVidPid},
@@ -43,6 +45,7 @@ pub mod upstream;
 
 use crate::{
     downstream::spi_downstream::SpiDownstream,
+    negicon_event::NegiconEvent,
     upstream::{
         spi::SPIUpstream,
         upstream::{Upstream, UsbUpstream},
@@ -78,6 +81,7 @@ const USB_HID_DESCRIPTOR: [u8; 38] = [
 #[link_section = ".boot2"]
 #[used]
 pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
+
 #[entry]
 fn main() -> ! {
     info!("Program start");
