@@ -144,7 +144,9 @@ fn main() -> ! {
         .build(&usb_bus);
 
     let mut tick_timer = timer.count_down();
-    tick_timer.start(1000.millis());
+    let mut ping_timer = timer.count_down();
+    tick_timer.start(5.millis());
+    ping_timer.start(5.secs());
 
     let usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x3939))
         .manufacturer("LeekLabs International")
@@ -265,6 +267,29 @@ fn main() -> ! {
                         }
                     };
                 }
+            }
+            Err(_) => {}
+        }
+        match ping_timer.wait() {
+            Ok(_) => {
+                info!("ping");
+                ping_timer.start(1.secs());
+                for up in upstreams.iter_mut() {
+                    match up.enqueue(NegiconEvent::new(
+                        negicon_event::NegiconEventType::Input,
+                        0,
+                        ux::u7::new(0),
+                        39,
+                        controller_id,
+                        ping,
+                    )) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            //warn!("Error while sending event to upstream: {:?}", e);
+                        }
+                    }
+                }
+                ping = ping.wrapping_add(1);
             }
             Err(_) => {}
         }
