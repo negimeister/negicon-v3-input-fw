@@ -221,26 +221,40 @@ fn main() -> ! {
         SpiDownstream::new(&mut cs19),
         SpiDownstream::new(&mut cs20),
     ];
-
+    let mut controller_id = 0u8;
     let mut upstreams = [Upstream::new(&mut usb_upstream)];
+    let mut ping = 0u8;
     loop {
         for up in upstreams.iter_mut() {
             match up.receive() {
                 Ok(Some(event)) => {
-                    debug!("Received event from upstream {:?}", event.event_type);
+                    //debug!("Received event from upstream {:?}", event.event_type);
                     match event.event_type {
-                        negicon_event::NegiconEventType::Input => todo!(),
-                        negicon_event::NegiconEventType::Output => todo!(),
-                        negicon_event::NegiconEventType::MemWrite => todo!(),
-                        negicon_event::NegiconEventType::Reboot => reset_to_usb_boot(0, 0),
+                        NegiconEventType::Input => todo!(),
+                        NegiconEventType::Output => todo!(),
+                        NegiconEventType::Log => todo!(),
+                        NegiconEventType::SetControllerId => {
+                            controller_id = event.value as u8;
+                        }
+                        NegiconEventType::MemWrite => {
+                            if event.controller_id == controller_id {
+                                downstreams[event.id as usize]
+                                    .write_memory(&event, &mut spi0, &mut delay);
+                            } else {
+                                todo!();
+                            }
+                        }
+                        NegiconEventType::Reboot => reset_to_usb_boot(0, 0),
                     }
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    warn!("Error while polling: {:?}", e);
+                    //warn!("Error while polling: {:?}", e);
                 }
             }
         }
+
+        //IDEA: Don't poll empty downstreams every loop to increase performance (maybe)
 
         match tick_timer.wait() {
             Ok(_) => {
