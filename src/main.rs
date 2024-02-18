@@ -12,7 +12,6 @@ use embedded_hal::{digital::v2::PinState, spi::MODE_1, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
 use negicon_protocol::negicon_event::{NegiconEvent, NegiconEventType};
 use panic_probe as _;
-use upstream::ringbuf::RingBuffer;
 use usb_device::{
     class_prelude::UsbBusAllocator,
     prelude::{UsbDeviceBuilder, UsbVidPid},
@@ -157,7 +156,7 @@ fn main() -> ! {
     let _spi_sclk = pins.gpio10.into_function::<FunctionSpi>();
     let _spi_mosi = pins.gpio11.into_function::<FunctionSpi>();
     let _spi_miso = pins.gpio12.into_function::<FunctionSpi>();
-    let mut _spi_cs = pins.gpio13.into_push_pull_output_in_state(PinState::High);
+    let mut _spi_cs = pins.gpio13.into_function::<FunctionSpi>();
 
     let spi1 = hal::Spi::new(pac.SPI1, (_spi_mosi, _spi_miso, _spi_sclk))
         .init_slave(&mut pac.RESETS, FrameFormat::MotorolaSpi(MODE_1));
@@ -222,9 +221,10 @@ fn main() -> ! {
     let mut controller_id = 0u8;
     let mut upstreams = [Upstream::new(&mut usb_upstream)];
     let mut ping = 0u8;
+
     loop {
         for up in upstreams.iter_mut() {
-            match up.receive() {
+            match up.poll() {
                 Ok(Some(event)) => {
                     //debug!("Received event from upstream {:?}", event.event_type);
                     match event.event_type {
