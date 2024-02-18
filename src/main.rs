@@ -10,7 +10,7 @@ use defmt_rtt as _;
 use embedded_alloc::Heap;
 use embedded_hal::{digital::v2::PinState, spi::MODE_1, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
-use negicon_event::NegiconEventType;
+use negicon_protocol::negicon_event::{NegiconEvent, NegiconEventType};
 use panic_probe as _;
 use upstream::ringbuf::RingBuffer;
 use usb_device::{
@@ -40,12 +40,10 @@ use usbd_human_interface_device::{
 };
 
 pub mod downstream;
-pub mod negicon_event;
 pub mod upstream;
 
 use crate::{
     downstream::spi_downstream::SpiDownstream,
-    negicon_event::NegiconEvent,
     upstream::{
         spi::SPIUpstream,
         upstream::{Upstream, UsbUpstream},
@@ -232,7 +230,6 @@ fn main() -> ! {
                     match event.event_type {
                         NegiconEventType::Input => todo!(),
                         NegiconEventType::Output => todo!(),
-                        NegiconEventType::Log => todo!(),
                         NegiconEventType::SetControllerId => {
                             controller_id = event.value as u8;
                         }
@@ -286,11 +283,15 @@ fn main() -> ! {
         }
         match ping_timer.wait() {
             Ok(_) => {
-                info!("ping");
-                ping_timer.start(1.secs());
+                // info!("ping");
+                ping_timer.start(500.millis());
+                _spi_upstream.transmit_event(
+                    &mut NegiconEvent::new(NegiconEventType::Input, 0, ux::u7::new(0), 39, 1, ping)
+                        .serialize(),
+                );
                 for up in upstreams.iter_mut() {
                     match up.enqueue(NegiconEvent::new(
-                        negicon_event::NegiconEventType::Input,
+                        NegiconEventType::Input,
                         0,
                         ux::u7::new(0),
                         39,
@@ -299,7 +300,7 @@ fn main() -> ! {
                     )) {
                         Ok(_) => {}
                         Err(e) => {
-                            //warn!("Error while sending event to upstream: {:?}", e);
+                            warn!("Error while sending event to upstream: {:?}", e);
                         }
                     }
                 }

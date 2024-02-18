@@ -1,10 +1,10 @@
-use embedded_hal::prelude::_embedded_hal_blocking_spi_Transfer;
+use defmt::debug;
+
+use negicon_protocol::spi_protocol::verified_transmit;
 use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
-
-
 
 pub(crate) struct SPIUpstream<D, P>
 where
@@ -24,9 +24,16 @@ where
     }
 
     pub(crate) fn transmit_event(&mut self, event: &mut [u8; 8]) -> Result<(), &'static str> {
-        match self.spi.transfer(event) {
-            Ok(_) => Ok(()),
-            Err(_) => Err("SPI Upstream Error"),
+        debug!("SPI TX: {:?}", event);
+        match verified_transmit(&mut self.spi, event) {
+            Ok(_) => {
+                debug!("SPI OK. rx: {:?}", event);
+                Ok(())
+            }
+            Err(_) => {
+                debug!("SPI Error");
+                Err("SPI Upstream Error")
+            }
         }
     }
 }
