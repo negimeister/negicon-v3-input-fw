@@ -1,9 +1,8 @@
 extern crate alloc;
 use core::{convert::Infallible, marker::PhantomData};
 
-use alloc::boxed::Box;
 use cortex_m::delay::Delay;
-use defmt::{error, info, Format};
+use defmt::{error, Format};
 use embedded_hal::{blocking::spi::Transfer, digital::v2::OutputPin};
 use rp2040_hal::{
     spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
@@ -67,9 +66,11 @@ where
         _delay: &mut Delay,
         spi: &mut Spi<Enabled, D, T, 8>,
     ) -> Result<NegiconEvent, DownstreamError> {
-        let mut packet = &mut [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let packet = &mut [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        self.cs.set_low().unwrap();
         spi.transfer(packet)
             .map_err(|_| DownstreamError::UnknownDevice(0))?;
+        self.cs.set_high().unwrap();
         NegiconEvent::deserialize(&packet).map_err(|_| DownstreamError::UnexpectedReply)
     }
 }

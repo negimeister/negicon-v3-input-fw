@@ -25,13 +25,15 @@ impl<T: core::marker::Copy> RingBuffer<T> {
 
     // Adds an item to the buffer. Returns an error if the buffer is full.
     pub(crate) fn push(&mut self, item: T) -> Result<(), BufferError> {
+        let mut result: Result<(), BufferError> = Ok(());
         while self.size >= BUFFER_SIZE {
             self.discard();
+            result = Err(BufferError::Overflow);
         }
         self.buffer[self.tail] = Some(item);
         self.tail = (self.tail + 1) % BUFFER_SIZE;
         self.size += 1;
-        Ok(())
+        result
     }
 
     // Peeks the next item in the buffer

@@ -40,13 +40,6 @@ impl<'a> Upstream<'a> {
         }
     }
 
-    pub(crate) fn enqueue_raw(&mut self, event: &[u8; 8]) -> Result<(), UpstreamError> {
-        match self.buffer.push(*event) {
-            Ok(_) => Ok(()),
-            Err(_) => Ok(()), //TODO error handling
-        }
-    }
-
     pub(crate) fn send(&mut self) -> Result<(), UpstreamError> {
         if let Some(event) = self.buffer.peek() {
             match self.interface.send(event) {
