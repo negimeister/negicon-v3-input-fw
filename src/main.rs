@@ -246,27 +246,20 @@ fn main() -> ! {
             }
         }
 
-        //IDEA: Don't poll empty downstreams every loop to increase performance (maybe)
-
         match tick_timer.wait() {
             Ok(_) => {
                 tick_timer.start(5.millis());
                 for ds in downstreams.iter_mut() {
                     match ds.poll(&mut delay, &mut spi0) {
                         Ok(res) => {
-                            res.map(|event| {
-                                for up in upstreams.iter_mut() {
-                                    match up.enqueue(event) {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            warn!(
-                                                "Error while enqueueing event for upstream: {:?}",
-                                                e
-                                            );
-                                        }
+                            for up in upstreams.iter_mut() {
+                                match up.enqueue(&res) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        warn!("Error while enqueueing event for upstream: {:?}", e);
                                     }
                                 }
-                            });
+                            }
                         }
                         Err(_e) => {
                             debug!("Error while polling downstream: {:?}", _e);
@@ -287,7 +280,7 @@ fn main() -> ! {
                     Err(e) => error!("Error while sending event to upstream: {:?}", e),
                 };
                 for up in upstreams.iter_mut() {
-                    match up.enqueue(NegiconEvent::new(
+                    match up.enqueue(&NegiconEvent::new(
                         NegiconEventType::Input,
                         0,
                         ux::u7::new(0),

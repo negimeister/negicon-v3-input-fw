@@ -1,10 +1,10 @@
 extern crate alloc;
-use core::convert::Infallible;
+use core::{convert::Infallible, marker::PhantomData};
 
 use alloc::boxed::Box;
 use cortex_m::delay::Delay;
 use defmt::{error, info, Format};
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::{blocking::spi::Transfer, digital::v2::OutputPin};
 use rp2040_hal::{
     spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
     Spi,
@@ -23,7 +23,8 @@ where
     T: ValidSpiPinout<D>,
 {
     cs: &'a mut dyn OutputPin<Error = Infallible>,
-    pub(crate) device: Option<Box<dyn DownstreamDevice<D, T>>>,
+    spi: PhantomData<D>,
+    pinout: PhantomData<T>,
 }
 
 pub(crate) trait DownstreamDevice<D, T>
@@ -54,14 +55,21 @@ where
     T: ValidSpiPinout<D>,
 {
     pub(crate) fn new(cs: &'a mut dyn OutputPin<Error = Infallible>) -> Self {
-        Self { cs, device: None }
+        Self {
+            cs,
+            spi: PhantomData,
+            pinout: PhantomData,
+        }
     }
 
     pub fn poll(
         &mut self,
         _delay: &mut Delay,
-        _spi: &mut Spi<Enabled, D, T, 8>,
-    ) -> Result<Option<NegiconEvent>, DownstreamError> {
-        Ok(None)
+        spi: &mut Spi<Enabled, D, T, 8>,
+    ) -> Result<NegiconEvent, DownstreamError> {
+        let mut packet = &mut [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        spi.transfer(packet)
+            .map_err(|_| DownstreamError::UnknownDevice(0))?;
+        NegiconEvent::deserialize(&packet).map_err(|_| DownstreamError::UnexpectedReply)
     }
 }

@@ -1,6 +1,6 @@
 use defmt::debug;
 
-use negicon_protocol::spi_protocol::verified_transmit;
+use embedded_hal::blocking::spi::Transfer;
 use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
@@ -25,7 +25,7 @@ where
 
     pub(crate) fn transmit_event(&mut self, event: &mut [u8; 8]) -> Result<(), &'static str> {
         debug!("SPI TX: {:?}", event);
-        match verified_transmit(&mut self.spi, event) {
+        match self.spi.transfer(event) {
             Ok(_) => {
                 debug!("SPI OK. rx: {:?}", event);
                 Ok(())

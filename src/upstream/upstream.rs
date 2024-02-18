@@ -1,7 +1,7 @@
 use super::{ringbuf::RingBuffer, spi::SPIUpstream};
 use negicon_protocol::negicon_event::NegiconEvent;
 
-use defmt::{Format};
+use defmt::Format;
 use frunk::{HCons, HNil};
 
 use rp2040_hal::spi::{SpiDevice, ValidSpiPinout};
@@ -33,7 +33,7 @@ impl<'a> Upstream<'a> {
         self.interface.receive()
     }
 
-    pub(crate) fn enqueue(&mut self, event: NegiconEvent) -> Result<(), UpstreamError> {
+    pub(crate) fn enqueue(&mut self, event: &NegiconEvent) -> Result<(), UpstreamError> {
         match self.buffer.push(event.serialize()) {
             Ok(_) => Ok(()),
             Err(_) => panic!("Upstream buffer overflow"), //TODO probably shouldn't panic
@@ -81,7 +81,7 @@ where
         self.dev.poll(&mut [&mut self.hid]);
         let mut data = [0u8; 8];
         match self.hid.device().read_report(&mut data) {
-            Ok(_report) => Ok(Some(NegiconEvent::deserialize(data))),
+            Ok(_report) => Ok(Some(NegiconEvent::deserialize(&data).unwrap())),
             Err(e) => match e {
                 UsbError::WouldBlock => Ok(None),
                 _ => Err(UpstreamError::UsbError(e)),
