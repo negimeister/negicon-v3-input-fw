@@ -171,7 +171,7 @@ fn main() -> ! {
         &embedded_hal::spi::MODE_1,
     );
 
-    let _spi_upstream = SPIUpstream::new(spi1);
+    let mut _spi_upstream = SPIUpstream::new(spi1);
 
     let mut cs0 = pins.gpio0.into_push_pull_output_in_state(PinState::High);
     let mut cs1 = pins.gpio1.into_push_pull_output_in_state(PinState::High);
