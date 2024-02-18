@@ -132,9 +132,9 @@ fn main() -> ! {
                 .description("Negicon v3")
                 .idle_default(500.millis())
                 .unwrap()
-                .in_endpoint(10.millis())
+                .in_endpoint(1.millis())
                 .unwrap()
-                .with_out_endpoint(100.millis())
+                .with_out_endpoint(50.millis())
                 .unwrap()
                 .build(),
         )
