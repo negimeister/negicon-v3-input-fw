@@ -1,7 +1,7 @@
 use super::{ringbuf::RingBuffer, spi::SPIUpstream};
 use negicon_protocol::negicon_event::NegiconEvent;
 
-use defmt::{warn, Format};
+use defmt::{Format};
 use frunk::{HCons, HNil};
 
 use rp2040_hal::spi::{SpiDevice, ValidSpiPinout};
@@ -28,7 +28,7 @@ impl<'a> Upstream<'a> {
     pub(crate) fn poll(&mut self) -> Result<Option<NegiconEvent>, UpstreamError> {
         match self.send() {
             Ok(_) => {}
-            Err(e) => {} //warn!("Failed to send event to upstream {:?}", e),
+            Err(_e) => {} //warn!("Failed to send event to upstream {:?}", e),
         }
         self.interface.receive()
     }

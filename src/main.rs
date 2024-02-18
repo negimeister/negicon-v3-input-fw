@@ -4,7 +4,7 @@
 #![no_std]
 #![no_main]
 extern crate alloc;
-use defmt::{debug, info, warn};
+use defmt::{debug, error, info, warn};
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
@@ -234,18 +234,13 @@ fn main() -> ! {
                             controller_id = event.value as u8;
                         }
                         NegiconEventType::MemWrite => {
-                            if event.controller_id == controller_id {
-                                downstreams[event.id as usize]
-                                    .write_memory(&event, &mut spi0, &mut delay);
-                            } else {
-                                todo!();
-                            }
+                            error!("Mem write is no longer implemented")
                         }
                         NegiconEventType::Reboot => reset_to_usb_boot(0, 0),
                     }
                 }
                 Ok(None) => {}
-                Err(e) => {
+                Err(_e) => {
                     //warn!("Error while polling: {:?}", e);
                 }
             }
@@ -283,12 +278,14 @@ fn main() -> ! {
         }
         match ping_timer.wait() {
             Ok(_) => {
-                // info!("ping");
                 ping_timer.start(500.millis());
-                _spi_upstream.transmit_event(
+                let packet =
                     &mut NegiconEvent::new(NegiconEventType::Input, 0, ux::u7::new(0), 39, 1, ping)
-                        .serialize(),
-                );
+                        .serialize();
+                match _spi_upstream.transmit_event(packet) {
+                    Ok(_) => {}
+                    Err(e) => error!("Error while sending event to upstream: {:?}", e),
+                };
                 for up in upstreams.iter_mut() {
                     match up.enqueue(NegiconEvent::new(
                         NegiconEventType::Input,
