@@ -153,25 +153,24 @@ fn main() -> ! {
     let mut usb_upstream = UsbUpstream::new(hid, usb_dev);
     let _i = 0u8;
 
-    let _spi_sclk = pins.gpio10.into_function::<FunctionSpi>();
-    let _spi_mosi = pins.gpio11.into_function::<FunctionSpi>();
-    let _spi_miso = pins.gpio12.into_function::<FunctionSpi>();
-    let mut _spi_cs = pins.gpio13.into_function::<FunctionSpi>();
-
-    let spi1 = hal::Spi::new(pac.SPI1, (_spi_mosi, _spi_miso, _spi_sclk))
+    let spi_sclk = pins.gpio10.into_function::<FunctionSpi>();
+    let spi_mosi = pins.gpio11.into_function::<FunctionSpi>();
+    let spi_miso = pins.gpio12.into_function::<FunctionSpi>();
+    let mut _spi1_cs = pins.gpio13.into_function::<FunctionSpi>();
+    let upward_spi = hal::Spi::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk))
         .init_slave(&mut pac.RESETS, FrameFormat::MotorolaSpi(MODE_1));
 
-    let _spi0_sclk = pins.gpio18.into_function::<FunctionSpi>();
-    let _spi0_mosi = pins.gpio19.into_function::<FunctionSpi>();
-    let _spi0_miso = pins.gpio20.into_function::<FunctionSpi>();
-    let mut spi0 = hal::Spi::new(pac.SPI0, (_spi0_mosi, _spi0_miso, _spi0_sclk)).init(
+    let spi0_sclk = pins.gpio18.into_function::<FunctionSpi>();
+    let spi0_mosi = pins.gpio19.into_function::<FunctionSpi>();
+    let spi0_miso = pins.gpio20.into_function::<FunctionSpi>();
+    let mut downward_spi = hal::Spi::new(pac.SPI0, (spi0_mosi, spi0_miso, spi0_sclk)).init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
         2_500_000u32.Hz(),
         &embedded_hal::spi::MODE_1,
     );
 
-    let mut _spi_upstream = SPIUpstream::new(spi1);
+    let mut _spi_upstream = SPIUpstream::new(upward_spi);
 
     let mut cs0 = pins.gpio0.into_push_pull_output_in_state(PinState::High);
     let mut cs1 = pins.gpio1.into_push_pull_output_in_state(PinState::High);
@@ -250,7 +249,7 @@ fn main() -> ! {
             Ok(_) => {
                 tick_timer.start(5.millis());
                 for ds in downstreams.iter_mut() {
-                    match ds.poll(&mut delay, &mut spi0) {
+                    match ds.poll(&mut delay, &mut downward_spi) {
                         Ok(res) => {
                             for up in upstreams.iter_mut() {
                                 match up.enqueue(&res) {
