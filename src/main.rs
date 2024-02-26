@@ -4,7 +4,8 @@
 #![no_std]
 #![no_main]
 extern crate alloc;
-use defmt::{debug, error, info, warn};
+use cortex_m::singleton;
+use defmt::{debug, error, info, warn, Debug2Format};
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
@@ -21,8 +22,8 @@ use usb_device::{
 use rp2040_hal as hal;
 // use sparkfun_pro_micro_rp2040 as bsp;
 use hal::{
-    clocks::init_clocks_and_plls,
-    clocks::Clock,
+    clocks::{init_clocks_and_plls, Clock},
+    dma::{single_buffer, DMAExt},
     entry,
     gpio::{FunctionSpi, Pins},
     pac,
@@ -166,7 +167,7 @@ fn main() -> ! {
     let mut downward_spi = hal::Spi::new(pac.SPI0, (spi0_mosi, spi0_miso, spi0_sclk)).init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
-        2_500_000u32.Hz(),
+        1_000_000u32.Hz(),
         &embedded_hal::spi::MODE_1,
     );
 
@@ -218,29 +219,27 @@ fn main() -> ! {
         SpiDownstream::new(&mut cs20),
     ];
     let mut controller_id = 0u8;
-    let mut upstreams = [Upstream::new(&mut usb_upstream)];
+    let mut upstreams = [
+        Upstream::new(&mut usb_upstream),
+        Upstream::new(&mut _spi_upstream),
+    ];
     let mut ping = 0u8;
 
     loop {
         for up in upstreams.iter_mut() {
             match up.poll() {
-                Ok(Some(event)) => {
-                    //debug!("Received event from upstream {:?}", event.event_type);
-                    match event.event_type {
-                        NegiconEventType::Input => todo!(),
-                        NegiconEventType::Output => todo!(),
-                        NegiconEventType::SetControllerId => {
-                            controller_id = event.value as u8;
-                        }
-                        NegiconEventType::MemWrite => {
-                            error!("Mem write is no longer implemented")
-                        }
-                        NegiconEventType::Reboot => reset_to_usb_boot(0, 0),
+                Ok(_) => loop {
+                    match up.receive() {
+                        Ok(None) => break,
+                        Ok(Some(e)) => debug!(
+                            "Received event from upstream {:?}",
+                            Debug2Format(&e.event_type)
+                        ),
+                        Err(e) => warn!("Error while receiving event from upstream"),
                     }
-                }
-                Ok(None) => {}
-                Err(_e) => {
-                    //warn!("Error while polling: {:?}", e);
+                },
+                Err(e) => {
+                    warn!("Error while polling upstream: {:?}", e);
                 }
             }
         }
@@ -251,17 +250,26 @@ fn main() -> ! {
                 for ds in downstreams.iter_mut() {
                     match ds.poll(&mut delay, &mut downward_spi) {
                         Ok(res) => {
-                            for up in upstreams.iter_mut() {
-                                match up.enqueue(&res) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        warn!("Error while enqueueing event for upstream: {:?}", e);
+                            debug!(
+                                "Received event from downstream {:?}",
+                                Debug2Format(&res.event_type)
+                            );
+                            if !res.is_ping() {
+                                for up in upstreams.iter_mut() {
+                                    match up.send(&res) {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            warn!(
+                                                "Error while enqueueing event for upstream: {:?}",
+                                                e
+                                            );
+                                        }
                                     }
                                 }
                             }
                         }
                         Err(_e) => {
-                            debug!("Error while polling downstream: {:?}", _e);
+                            //debug!("Error while polling downstream: {:?}", _e);
                         }
                     };
                 }
@@ -274,12 +282,9 @@ fn main() -> ! {
                 let packet =
                     &mut NegiconEvent::new(NegiconEventType::Input, 0, ux::u7::new(0), 39, 1, ping)
                         .serialize();
-                match _spi_upstream.transmit_event(packet) {
-                    Ok(_) => {}
-                    Err(e) => error!("Error while sending event to upstream: {:?}", e),
-                };
+
                 for up in upstreams.iter_mut() {
-                    match up.enqueue(&NegiconEvent::new(
+                    match up.send(&NegiconEvent::new(
                         NegiconEventType::Input,
                         0,
                         ux::u7::new(0),

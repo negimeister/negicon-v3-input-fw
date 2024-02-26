@@ -9,7 +9,8 @@ use rp2040_hal::{
     Spi,
 };
 
-use negicon_protocol::negicon_event::NegiconEvent;
+use negicon_protocol::negicon_event::{NegiconEvent, NegiconEventType};
+use ux::u7;
 #[derive(Format)]
 pub(crate) enum DownstreamError {
     UnknownDevice(u8),
@@ -66,9 +67,10 @@ where
         _delay: &mut Delay,
         spi: &mut Spi<Enabled, D, T, 8>,
     ) -> Result<NegiconEvent, DownstreamError> {
-        let packet = &mut [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let mut packet =
+            NegiconEvent::new(NegiconEventType::Output, 0, u7::new(0), 0x39, 39, 0).serialize();
         self.cs.set_low().unwrap();
-        spi.transfer(packet)
+        spi.transfer(&mut packet)
             .map_err(|_| DownstreamError::UnknownDevice(0))?;
         self.cs.set_high().unwrap();
         NegiconEvent::deserialize(&packet).map_err(|_| DownstreamError::UnexpectedReply)

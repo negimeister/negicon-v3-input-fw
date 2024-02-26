@@ -1,5 +1,5 @@
-use super::{ringbuf::RingBuffer, spi::SPIUpstream};
-use negicon_protocol::negicon_event::NegiconEvent;
+use super::spi::SPIUpstream;
+use negicon_protocol::{negicon_event::NegiconEvent, ringbuf::RingBuffer, InvalidMessage};
 
 use defmt::Format;
 use frunk::{HCons, HNil};
@@ -13,41 +13,39 @@ use usbd_human_interface_device::{
 type HID<'a, B> =
     UsbHidClass<'a, B, HCons<Interface<'a, B, InBytes8, OutBytes8, ReportSingle>, HNil>>;
 pub(crate) struct Upstream<'a> {
-    buffer: RingBuffer<[u8; 8]>,
-    interface: &'a mut dyn UpstreamInterface,
+    tx_buffer: RingBuffer<[u8; 8], 64>,
+    rx_buffer: RingBuffer<[u8; 8], 64>,
+    interface: &'a mut dyn UpstreamInterface<64>,
 }
 
 impl<'a> Upstream<'a> {
-    pub(crate) fn new(interface: &'a mut dyn UpstreamInterface) -> Self {
+    pub(crate) fn new(interface: &'a mut dyn UpstreamInterface<64>) -> Self {
         Self {
-            buffer: RingBuffer::new(),
+            tx_buffer: RingBuffer::new(),
+            rx_buffer: RingBuffer::new(),
             interface,
         }
     }
 
-    pub(crate) fn poll(&mut self) -> Result<Option<NegiconEvent>, UpstreamError> {
-        match self.send() {
-            Ok(_) => {}
-            Err(_e) => {} //warn!("Failed to send event to upstream {:?}", e),
-        }
-        self.interface.receive()
+    pub(crate) fn poll(&mut self) -> Result<(), UpstreamError> {
+        self.interface
+            .poll(&mut self.tx_buffer, &mut self.rx_buffer)
     }
 
-    pub(crate) fn enqueue(&mut self, event: &NegiconEvent) -> Result<(), UpstreamError> {
-        match self.buffer.push(event.serialize()) {
-            Ok(_) => Ok(()),
-            Err(_) => panic!("Upstream buffer overflow"), //TODO probably shouldn't panic
-        }
+    pub(crate) fn send(&mut self, event: &NegiconEvent) -> Result<(), UpstreamError> {
+        self.tx_buffer
+            .push(event.serialize())
+            .map_err(|_| UpstreamError::BufferOverflow)
     }
 
-    pub(crate) fn send(&mut self) -> Result<(), UpstreamError> {
-        if let Some(event) = self.buffer.peek() {
-            match self.interface.send(event) {
-                Ok(_) => Ok(self.buffer.discard()),
-                Err(e) => return Err(e),
-            }
-        } else {
-            Ok(())
+    pub(crate) fn receive(&mut self) -> Result<Option<NegiconEvent>, UpstreamError> {
+        let deserialized = match self.tx_buffer.pop() {
+            Some(event) => NegiconEvent::deserialize(&event),
+            None => return Ok(None),
+        };
+        match deserialized {
+            Ok(event) => Ok(Some(event)),
+            Err(e) => Err(UpstreamError::InvalidMessage(e)),
         }
     }
 }
@@ -66,54 +64,88 @@ where
     }
 }
 
-impl<B> UpstreamInterface for UsbUpstream<'_, B>
+impl<B, const SIZE: usize> UpstreamInterface<SIZE> for UsbUpstream<'_, B>
 where
     B: UsbBus,
 {
-    fn receive(&mut self) -> Result<Option<NegiconEvent>, UpstreamError> {
+    fn poll(
+        &mut self,
+        tx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
+        rx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
+    ) -> Result<(), UpstreamError> {
         self.dev.poll(&mut [&mut self.hid]);
-        let mut data = [0u8; 8];
-        match self.hid.device().read_report(&mut data) {
-            Ok(_report) => Ok(Some(NegiconEvent::deserialize(&data).unwrap())),
-            Err(e) => match e {
-                UsbError::WouldBlock => Ok(None),
-                _ => Err(UpstreamError::UsbError(e)),
-            },
+        let mut rx = [0u8; 8];
+        loop {
+            match self.hid.device().read_report(&mut rx) {
+                Ok(_) => {
+                    let _ = rx_buffer.push(rx);
+                }
+                Err(UsbError::WouldBlock) => {
+                    break;
+                }
+                Err(e) => return Err(UpstreamError::UsbError(e)),
+            }
         }
-    }
-
-    fn send(&mut self, event: &mut [u8; 8]) -> Result<(), UpstreamError> {
-        match self.hid.device().write_report(event) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(UpstreamError::UsbError(e)),
+        loop {
+            match tx_buffer.peek() {
+                Some(event) => match self.hid.device().write_report(event) {
+                    Ok(_) => {
+                        let _ = tx_buffer.discard();
+                    }
+                    Err(UsbError::WouldBlock) => {
+                        break;
+                    }
+                    Err(e) => return Err(UpstreamError::UsbError(e)),
+                },
+                None => {
+                    break;
+                }
+            }
         }
+        Ok(())
     }
 }
 
-pub(crate) trait UpstreamInterface {
-    fn receive(&mut self) -> Result<Option<NegiconEvent>, UpstreamError>;
-    fn send(&mut self, event: &mut [u8; 8]) -> Result<(), UpstreamError>;
+pub(crate) trait UpstreamInterface<const SIZE: usize> {
+    fn poll(
+        &mut self,
+        tx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
+        rx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
+    ) -> Result<(), UpstreamError>;
 }
 
 #[derive(Format)]
 pub(crate) enum UpstreamError {
     SpiError,
     UsbError(UsbError),
+    BufferOverflow,
+    InvalidMessage(InvalidMessage),
+    WouldBlock,
 }
 
-impl<D, P> UpstreamInterface for SPIUpstream<D, P>
+impl<'a, D, P, const SIZE: usize> UpstreamInterface<SIZE> for SPIUpstream<D, P>
 where
     D: SpiDevice,
     P: ValidSpiPinout<D>,
 {
-    fn send(&mut self, event: &mut [u8; 8]) -> Result<(), UpstreamError> {
-        match self.transmit_event(event) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(UpstreamError::SpiError),
+    fn poll(
+        &mut self,
+        tx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
+        rx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
+    ) -> Result<(), UpstreamError> {
+        self.read().map(|data| {
+            for byte in data.iter() {
+                rx_buffer.push(data);
+            }
+        });
+        if let Some(event) = tx_buffer.peek() {
+            match self.send(event) {
+                Ok(_) => {
+                    tx_buffer.discard();
+                }
+                Err(e) => return Err(UpstreamError::SpiError),
+            }
         }
-    }
-
-    fn receive(&mut self) -> Result<Option<NegiconEvent>, UpstreamError> {
-        todo!()
+        Ok(())
     }
 }

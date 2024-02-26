@@ -9,7 +9,7 @@ cortex-m = "0.7"
 cortex-m-rt = "0.7"
 embedded-hal = { version = "0.2.5", features = ["unproven"] }
 
-negicon-protocol = "0.2.1"
+negicon-protocol = "0.2.7"
 
 defmt = "0.3"
 defmt-rtt = "0.4"
@@ -33,6 +33,7 @@ embedded-alloc = "0.5.1"
 usbd-picotool-reset = "0.2.0"
 frunk = { version = "0.4", default-features = false }
 ux = { version = "0.1.5", default-features = false }
+nb = { version = "1.1.0", features = ["defmt-0-3"] }
 
 # cargo build/run
 [profile.dev]
