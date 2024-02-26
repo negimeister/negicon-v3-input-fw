@@ -1,9 +1,4 @@
-
-
-use embedded_hal::{
-    blocking::spi::{Write},
-    spi::FullDuplex,
-};
+use embedded_hal::{blocking::spi::Write, spi::FullDuplex};
 use rp2040_hal::{
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
@@ -17,8 +12,6 @@ where
     spi: Spi<Enabled, D, P, 8>,
     rx_buffer: [u8; 8],
     rx_index: usize,
-    tx_buffer: [u8; 8],
-    tx_idx: usize,
 }
 
 impl<D, P> SPIUpstream<D, P>
@@ -31,8 +24,6 @@ where
             spi,
             rx_buffer: [0u8; 8],
             rx_index: 0,
-            tx_buffer: [0u8; 8],
-            tx_idx: 0,
         }
     }
 
@@ -60,7 +51,7 @@ where
         if self.spi.is_busy() {
             return Err(nb::Error::WouldBlock);
         }
-        match self.spi.send(event[0]) {
+        let _ = match self.spi.send(event[0]) {
             Ok(_) => self.spi.write(&event[1..]),
             Err(_) => return Err(nb::Error::WouldBlock),
         };

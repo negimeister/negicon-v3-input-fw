@@ -120,7 +120,6 @@ pub(crate) enum UpstreamError {
     UsbError(UsbError),
     BufferOverflow,
     InvalidMessage(InvalidMessage),
-    WouldBlock,
 }
 
 impl<'a, D, P, const SIZE: usize> UpstreamInterface<SIZE> for SPIUpstream<D, P>
@@ -135,7 +134,7 @@ where
     ) -> Result<(), UpstreamError> {
         self.read().map(|data| {
             for _byte in data.iter() {
-                rx_buffer.push(data);
+                let _ = rx_buffer.push(data);
             }
         });
         if let Some(event) = tx_buffer.peek() {
