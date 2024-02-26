@@ -4,8 +4,8 @@
 #![no_std]
 #![no_main]
 extern crate alloc;
-use cortex_m::singleton;
-use defmt::{debug, error, info, warn, Debug2Format};
+
+use defmt::{debug, info, warn, Debug2Format};
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
@@ -23,11 +23,9 @@ use rp2040_hal as hal;
 // use sparkfun_pro_micro_rp2040 as bsp;
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
-    dma::{single_buffer, DMAExt},
     entry,
     gpio::{FunctionSpi, Pins},
     pac,
-    rom_data::reset_to_usb_boot,
     spi::FrameFormat,
     usb::UsbBus,
     watchdog::Watchdog,
@@ -218,7 +216,7 @@ fn main() -> ! {
         SpiDownstream::new(&mut cs19),
         SpiDownstream::new(&mut cs20),
     ];
-    let mut controller_id = 0u8;
+    let controller_id = 0u8;
     let mut upstreams = [
         Upstream::new(&mut usb_upstream),
         Upstream::new(&mut _spi_upstream),
@@ -235,7 +233,7 @@ fn main() -> ! {
                             "Received event from upstream {:?}",
                             Debug2Format(&e.event_type)
                         ),
-                        Err(e) => warn!("Error while receiving event from upstream"),
+                        Err(_e) => warn!("Error while receiving event from upstream"),
                     }
                 },
                 Err(e) => {
@@ -279,7 +277,7 @@ fn main() -> ! {
         match ping_timer.wait() {
             Ok(_) => {
                 ping_timer.start(500.millis());
-                let packet =
+                let _packet =
                     &mut NegiconEvent::new(NegiconEventType::Input, 0, ux::u7::new(0), 39, 1, ping)
                         .serialize();
 

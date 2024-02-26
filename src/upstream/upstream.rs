@@ -134,7 +134,7 @@ where
         rx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
     ) -> Result<(), UpstreamError> {
         self.read().map(|data| {
-            for byte in data.iter() {
+            for _byte in data.iter() {
                 rx_buffer.push(data);
             }
         });
@@ -143,7 +143,7 @@ where
                 Ok(_) => {
                     tx_buffer.discard();
                 }
-                Err(e) => return Err(UpstreamError::SpiError),
+                Err(_e) => return Err(UpstreamError::SpiError),
             }
         }
         Ok(())

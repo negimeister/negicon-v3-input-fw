@@ -1,11 +1,10 @@
-use defmt::debug;
+
 
 use embedded_hal::{
-    blocking::spi::{Transfer, Write},
+    blocking::spi::{Write},
     spi::FullDuplex,
 };
 use rp2040_hal::{
-    dma::ReadTarget,
     spi::{Enabled, SpiDevice, ValidSpiPinout},
     Spi,
 };
