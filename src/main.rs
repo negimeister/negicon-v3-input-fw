@@ -3,8 +3,8 @@
 //! This will blink an LED attached to GP25, which is the pin the Pico uses for the on-board LED.
 #![no_std]
 #![no_main]
-extern crate alloc;
 
+extern crate panic_usb_boot;
 use defmt::{debug, info, warn, Debug2Format};
 use defmt_rtt as _;
 
@@ -12,7 +12,7 @@ use embedded_alloc::Heap;
 use embedded_hal::{digital::v2::PinState, spi::MODE_1, timer::CountDown};
 use fugit::{ExtU32, RateExtU32};
 use negicon_protocol::negicon_event::{NegiconEvent, NegiconEventType};
-use panic_probe as _;
+
 use usb_device::{
     class_prelude::UsbBusAllocator,
     prelude::{UsbDeviceBuilder, UsbVidPid},
@@ -26,6 +26,8 @@ use hal::{
     entry,
     gpio::{FunctionSpi, Pins},
     pac,
+    pio::PIOExt,
+    rom_data::reset_to_usb_boot,
     spi::FrameFormat,
     usb::UsbBus,
     watchdog::Watchdog,
@@ -41,7 +43,7 @@ pub mod downstream;
 pub mod upstream;
 
 use crate::{
-    downstream::spi_downstream::SpiDownstream,
+    downstream::spi_downstream::DownstreamDevice,
     upstream::{
         spi::SPIUpstream,
         upstream::{Upstream, UsbUpstream},
@@ -139,6 +141,8 @@ fn main() -> ! {
         )
         .build(&usb_bus);
 
+    let (mut pio0, mut sm0, mut sm1, mut sm2, mut sm3) = pac.PIO0.split(&mut pac.RESETS);
+    //let mut downstreamInterface = downstream::spi_downstream::PioSpiDownstream::new(pio0, sm0, sm1);
     let mut tick_timer = timer.count_down();
     let mut ping_timer = timer.count_down();
     tick_timer.start(5.millis());
@@ -162,60 +166,10 @@ fn main() -> ! {
     let spi0_sclk = pins.gpio18.into_function::<FunctionSpi>();
     let spi0_mosi = pins.gpio19.into_function::<FunctionSpi>();
     let spi0_miso = pins.gpio20.into_function::<FunctionSpi>();
-    let mut downward_spi = hal::Spi::new(pac.SPI0, (spi0_mosi, spi0_miso, spi0_sclk)).init(
-        &mut pac.RESETS,
-        clocks.peripheral_clock.freq(),
-        1_000_000u32.Hz(),
-        &embedded_hal::spi::MODE_1,
-    );
 
     let mut _spi_upstream = SPIUpstream::new(upward_spi);
 
-    let mut cs0 = pins.gpio0.into_push_pull_output_in_state(PinState::High);
-    let mut cs1 = pins.gpio1.into_push_pull_output_in_state(PinState::High);
-    let mut cs2 = pins.gpio2.into_push_pull_output_in_state(PinState::High);
-    let mut cs3 = pins.gpio3.into_push_pull_output_in_state(PinState::High);
-    let mut cs4 = pins.gpio4.into_push_pull_output_in_state(PinState::High);
-    let mut cs5 = pins.gpio5.into_push_pull_output_in_state(PinState::High);
-    let mut cs6 = pins.gpio6.into_push_pull_output_in_state(PinState::High);
-    let mut cs7 = pins.gpio7.into_push_pull_output_in_state(PinState::High);
-    let mut cs8 = pins.gpio8.into_push_pull_output_in_state(PinState::High);
-    let mut cs9 = pins.gpio9.into_push_pull_output_in_state(PinState::High);
-    let mut cs10 = pins.gpio14.into_push_pull_output_in_state(PinState::High);
-    let mut cs11 = pins.gpio15.into_push_pull_output_in_state(PinState::High);
-    let mut cs12 = pins.gpio16.into_push_pull_output_in_state(PinState::High);
-    let mut cs13 = pins.gpio17.into_push_pull_output_in_state(PinState::High);
-    let mut cs14 = pins.gpio21.into_push_pull_output_in_state(PinState::High);
-    let mut cs15 = pins.gpio22.into_push_pull_output_in_state(PinState::High);
-    let mut cs16 = pins.gpio23.into_push_pull_output_in_state(PinState::High);
-    let mut cs17 = pins.gpio24.into_push_pull_output_in_state(PinState::High);
-    let mut cs18 = pins.gpio25.into_push_pull_output_in_state(PinState::High);
-    let mut cs19 = pins.gpio26.into_push_pull_output_in_state(PinState::High);
-    let mut cs20 = pins.gpio27.into_push_pull_output_in_state(PinState::High);
-
-    let mut downstreams = [
-        SpiDownstream::new(&mut cs0),
-        SpiDownstream::new(&mut cs1),
-        SpiDownstream::new(&mut cs2),
-        SpiDownstream::new(&mut cs3),
-        SpiDownstream::new(&mut cs4),
-        SpiDownstream::new(&mut cs5),
-        SpiDownstream::new(&mut cs6),
-        SpiDownstream::new(&mut cs7),
-        SpiDownstream::new(&mut cs8),
-        SpiDownstream::new(&mut cs9),
-        SpiDownstream::new(&mut cs10),
-        SpiDownstream::new(&mut cs11),
-        SpiDownstream::new(&mut cs12),
-        SpiDownstream::new(&mut cs13),
-        SpiDownstream::new(&mut cs14),
-        SpiDownstream::new(&mut cs15),
-        SpiDownstream::new(&mut cs16),
-        SpiDownstream::new(&mut cs17),
-        SpiDownstream::new(&mut cs18),
-        SpiDownstream::new(&mut cs19),
-        SpiDownstream::new(&mut cs20),
-    ];
+    let mut downstreams = [DownstreamDevice::new(19)];
     let controller_id = 0u8;
     let mut upstreams = [
         Upstream::new(&mut usb_upstream),
@@ -229,10 +183,19 @@ fn main() -> ! {
                 Ok(_) => loop {
                     match up.receive() {
                         Ok(None) => break,
-                        Ok(Some(e)) => debug!(
-                            "Received event from upstream {:?}",
-                            Debug2Format(&e.event_type)
-                        ),
+                        Ok(Some(e)) => {
+                            reset_to_usb_boot(0, 0);
+                            match e.event_type {
+                                NegiconEventType::Reboot => {
+                                    reset_to_usb_boot(0, 0);
+                                }
+                                _ => {}
+                            };
+                            debug!(
+                                "Received event from upstream {:?}",
+                                Debug2Format(&e.event_type)
+                            )
+                        }
                         Err(_e) => warn!("Error while receiving event from upstream"),
                     }
                 },
@@ -246,7 +209,7 @@ fn main() -> ! {
             Ok(_) => {
                 tick_timer.start(5.millis());
                 for ds in downstreams.iter_mut() {
-                    match ds.poll(&mut delay, &mut downward_spi) {
+                    /*match ds.poll(&mut delay, &mut downstreamInterface) {
                         Ok(res) => {
                             debug!(
                                 "Received event from downstream {:?}",
@@ -269,7 +232,7 @@ fn main() -> ! {
                         Err(_e) => {
                             //debug!("Error while polling downstream: {:?}", _e);
                         }
-                    };
+                    };*/
                 }
             }
             Err(_) => {}
