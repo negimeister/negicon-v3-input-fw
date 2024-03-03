@@ -39,7 +39,7 @@ impl<'a> Upstream<'a> {
     }
 
     pub(crate) fn receive(&mut self) -> Result<Option<NegiconEvent>, UpstreamError> {
-        let deserialized = match self.tx_buffer.pop() {
+        let deserialized = match self.rx_buffer.pop() {
             Some(event) => NegiconEvent::deserialize(&event),
             None => return Ok(None),
         };

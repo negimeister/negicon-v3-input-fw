@@ -62,6 +62,7 @@ impl<P: PIOExt, SM0: StateMachineIndex, SM1: StateMachineIndex> PioSpiDownstream
             .out_pins(mosi_pin_id, 1)
             .out_shift_direction(ShiftDirection::Left)
             .side_set_pin_base(sck_pin_id)
+            .clock_divisor_fixed_point(42, 0)
             .build(sm1);
         sm.set_pindirs([
             (mosi_pin_id, PinDir::Output),
@@ -77,7 +78,8 @@ impl<P: PIOExt, SM0: StateMachineIndex, SM1: StateMachineIndex> PioSpiDownstream
             .buffers(Buffers::OnlyTx)
             .out_pins(cs_pins_base, 5)
             .set_pins(cs_pins_base, 5)
-            .out_shift_direction(ShiftDirection::Left)
+            .out_shift_direction(ShiftDirection::Right)
+            .clock_divisor_fixed_point(10, 0)
             .build(sm0);
 
         sm.set_pindirs([
@@ -104,10 +106,25 @@ impl<P: PIOExt, SM0: StateMachineIndex, SM1: StateMachineIndex> DownstreamInterf
     fn transfer(&mut self, cs: u8, packet: &mut [u8; 8]) -> Result<(), DownstreamError> {
         let first = make_u32(packet[0], packet[1], packet[2], packet[3]);
         let second = make_u32(packet[4], packet[5], packet[6], packet[7]);
-        self.cs_tx.write(cs.into());
+        self.cs_tx.write_u8_replicated(cs);
         self.data_tx.write(first);
         self.data_tx.write(second);
-
+        loop {
+            match self.data_rx.read() {
+                Some(_) => {
+                    break;
+                }
+                None => {}
+            }
+        }
+        loop {
+            match self.data_rx.read() {
+                Some(_) => {
+                    break;
+                }
+                None => {}
+            }
+        }
         Ok(())
     }
 }
@@ -132,16 +149,20 @@ impl DownstreamDevice {
         interface
             .transfer(self.cs, &mut packet)
             .map_err(|_| DownstreamError::UnknownDevice(0))?;
-        NegiconEvent::deserialize(&packet).map_err(|_| DownstreamError::UnexpectedReply)
+        //NegiconEvent::deserialize(&packet).map_err(|_| DownstreamError::UnexpectedReply)
+        Err(DownstreamError::UnexpectedReply)
     }
 }
 
 fn spi_program() -> (pio::Assembler<32>, Label, Label) {
-    let mut program = pio::Assembler::<32>::new();
+    let mut program = pio::Assembler::<32>::new_with_side_set(SideSet::new(true, 1, false));
+    //let mut program = pio::Assembler::<32>::new();
     let mut wrap_target = program.label();
     let mut wrap_source = program.label();
     let mut next_bit = program.label();
+    let mut next_bit2 = program.label();
     program.bind(&mut wrap_target);
+
     program.pull(false, true);
     program.bind(&mut next_bit);
     // cs delay
@@ -151,22 +172,21 @@ fn spi_program() -> (pio::Assembler<32>, Label, Label) {
         pio::JmpCondition::OutputShiftRegisterNotEmpty,
         &mut next_bit,
     );
+    program.push(false, false);
     // pull another word
-    program.pull(false, false);
-    // if there is one, continue transmitting
+    program.pull(false, true);
+    program.bind(&mut next_bit2);
+
+    program.out_with_side_set(pio::OutDestination::PINS, 1, 1);
+    program.in_with_side_set(pio::InSource::PINS, 1, 0);
     program.jmp(
         pio::JmpCondition::OutputShiftRegisterNotEmpty,
-        &mut next_bit,
+        &mut next_bit2,
     );
-    // else set the irq flag and loop
-    program.irq(false, false, 4, false);
+    program.push(false, false);
 
-    // push data bit and set clock high
-    // (wait)
-    // shift in data and set clock low
-    // loop until work is out
-    // somehow grab 2nd word
     program.irq(false, false, 4, false);
+    program.bind(&mut wrap_source);
     (program, wrap_source, wrap_target)
 }
 
@@ -177,9 +197,11 @@ fn cs_program() -> (pio::Assembler<32>, Label, Label) {
     program.bind(&mut wrap_target);
     program.pull(false, true);
     program.out(pio::OutDestination::PINS, 5);
+    //program.set(pio::SetDestination::PINS, 0x0);
     //wait for transfer to finish
+    //program.nop_with_delay(31);
     program.wait(1, pio::WaitSource::IRQ, 4, false);
-    program.set(pio::SetDestination::PINS, 0);
+    program.set(pio::SetDestination::PINS, 0x1f);
     program.bind(&mut wrap_source);
 
     (program, wrap_source, wrap_target)
@@ -192,7 +214,7 @@ fn in_program(sck_gpio: u8) -> (pio::Assembler<32>, Label, Label) {
     let mut next_bit = program.label();
     program.bind(&mut wrap_target);
     program.pull(false, true);
-    program.set(pio::SetDestination::PINS, 0);
+    program.set(pio::SetDestination::PINS, 0x1f);
     //program.set_with_delay_and_side_set(destination, data, delay, side_set);
     // pull chip select from fifo
     // set chip address

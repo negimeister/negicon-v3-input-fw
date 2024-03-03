@@ -24,7 +24,7 @@ use rp2040_hal as hal;
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
     entry,
-    gpio::{FunctionSpi, Pins},
+    gpio::{FunctionPio0, FunctionSpi, Pins},
     pac,
     pio::PIOExt,
     rom_data::reset_to_usb_boot,
@@ -142,7 +142,16 @@ fn main() -> ! {
         .build(&usb_bus);
 
     let (mut pio0, mut sm0, mut sm1, mut sm2, mut sm3) = pac.PIO0.split(&mut pac.RESETS);
-    //let mut downstreamInterface = downstream::spi_downstream::PioSpiDownstream::new(pio0, sm0, sm1);
+    pins.gpio18.into_function::<FunctionPio0>();
+    pins.gpio19.into_function::<FunctionPio0>();
+    pins.gpio20.into_function::<FunctionPio0>();
+    pins.gpio21.into_function::<FunctionPio0>();
+    pins.gpio22.into_function::<FunctionPio0>();
+    pins.gpio23.into_function::<FunctionPio0>();
+    pins.gpio24.into_function::<FunctionPio0>();
+    pins.gpio25.into_function::<FunctionPio0>();
+
+    let mut downstreamInterface = downstream::spi_downstream::PioSpiDownstream::new(pio0, sm0, sm1);
     let mut tick_timer = timer.count_down();
     let mut ping_timer = timer.count_down();
     tick_timer.start(5.millis());
@@ -160,20 +169,49 @@ fn main() -> ! {
     let spi_mosi = pins.gpio11.into_function::<FunctionSpi>();
     let spi_miso = pins.gpio12.into_function::<FunctionSpi>();
     let mut _spi1_cs = pins.gpio13.into_function::<FunctionSpi>();
-    let upward_spi = hal::Spi::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk))
+    /*let upward_spi = hal::Spi::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk))
         .init_slave(&mut pac.RESETS, FrameFormat::MotorolaSpi(MODE_1));
 
-    let spi0_sclk = pins.gpio18.into_function::<FunctionSpi>();
-    let spi0_mosi = pins.gpio19.into_function::<FunctionSpi>();
-    let spi0_miso = pins.gpio20.into_function::<FunctionSpi>();
+    let mut _spi_upstream = SPIUpstream::new(upward_spi);*/
 
-    let mut _spi_upstream = SPIUpstream::new(upward_spi);
-
-    let mut downstreams = [DownstreamDevice::new(19)];
+    let mut downstreams = [
+        DownstreamDevice::new(0),
+        DownstreamDevice::new(1),
+        /*DownstreamDevice::new(2),
+        DownstreamDevice::new(3),
+        DownstreamDevice::new(4),
+        DownstreamDevice::new(5),
+        DownstreamDevice::new(6),
+        DownstreamDevice::new(7),
+        DownstreamDevice::new(8),
+        DownstreamDevice::new(9),
+        DownstreamDevice::new(10),
+        DownstreamDevice::new(11),
+        DownstreamDevice::new(12),
+        DownstreamDevice::new(13),
+        DownstreamDevice::new(14),
+        DownstreamDevice::new(15),
+        DownstreamDevice::new(16),
+        DownstreamDevice::new(17),
+        DownstreamDevice::new(18),
+        DownstreamDevice::new(19),
+        DownstreamDevice::new(20),
+        DownstreamDevice::new(21),
+        DownstreamDevice::new(22),
+        DownstreamDevice::new(23),
+        DownstreamDevice::new(24),
+        DownstreamDevice::new(25),
+        DownstreamDevice::new(26),
+        DownstreamDevice::new(27),
+        DownstreamDevice::new(28),
+        DownstreamDevice::new(29),
+        DownstreamDevice::new(30),
+        DownstreamDevice::new(31),*/
+    ];
     let controller_id = 0u8;
     let mut upstreams = [
         Upstream::new(&mut usb_upstream),
-        Upstream::new(&mut _spi_upstream),
+        //Upstream::new(&mut _spi_upstream),
     ];
     let mut ping = 0u8;
 
@@ -184,17 +222,14 @@ fn main() -> ! {
                     match up.receive() {
                         Ok(None) => break,
                         Ok(Some(e)) => {
-                            reset_to_usb_boot(0, 0);
                             match e.event_type {
                                 NegiconEventType::Reboot => {
+                                    debug!("Rebooting to USB boot");
                                     reset_to_usb_boot(0, 0);
                                 }
                                 _ => {}
                             };
-                            debug!(
-                                "Received event from upstream {:?}",
-                                Debug2Format(&e.event_type)
-                            )
+                            debug!("Received event from upstream {:?}", Debug2Format(&e))
                         }
                         Err(_e) => warn!("Error while receiving event from upstream"),
                     }
@@ -209,12 +244,9 @@ fn main() -> ! {
             Ok(_) => {
                 tick_timer.start(5.millis());
                 for ds in downstreams.iter_mut() {
-                    /*match ds.poll(&mut delay, &mut downstreamInterface) {
+                    match ds.poll(&mut delay, &mut downstreamInterface) {
                         Ok(res) => {
-                            debug!(
-                                "Received event from downstream {:?}",
-                                Debug2Format(&res.event_type)
-                            );
+                            debug!("Received event from downstream {:?}", Debug2Format(&res));
                             if !res.is_ping() {
                                 for up in upstreams.iter_mut() {
                                     match up.send(&res) {
@@ -232,7 +264,7 @@ fn main() -> ! {
                         Err(_e) => {
                             //debug!("Error while polling downstream: {:?}", _e);
                         }
-                    };*/
+                    };
                 }
             }
             Err(_) => {}
@@ -265,5 +297,3 @@ fn main() -> ! {
         }
     }
 }
-
-// End of file
