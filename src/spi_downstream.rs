@@ -1,20 +1,15 @@
 extern crate alloc;
-use core::{convert::Infallible, marker::PhantomData, ops::BitXor};
+
 
 use cortex_m::delay::Delay;
-use defmt::{error, Format};
-use embedded_hal::{blocking::spi::Transfer, digital::v2::OutputPin};
+use defmt::{Format};
+use embedded_hal::{blocking::spi::Transfer};
 use pio::{Label, SideSet};
 use rp2040_hal::{
-    gpio::PinId,
-    pac::adc::cs,
     pio::{
-        Buffers, PIOExt, PinDir, ShiftDirection, StateMachine, StateMachineIndex,
-        UninitStateMachine, ValidStateMachine, PIO, SM0,
+        Buffers, PIOExt, PinDir, ShiftDirection, StateMachineIndex,
+        UninitStateMachine, PIO,
     },
-    pll::State,
-    spi::{Enabled, SpiDevice as HalSpiDevice, ValidSpiPinout},
-    Spi,
 };
 
 use negicon_protocol::{
@@ -73,9 +68,9 @@ impl<P: PIOExt, SM0: StateMachineIndex, SM1: StateMachineIndex, SM2: StateMachin
 
         let mut program = program.assemble_with_wrap(wrap_source, wrap_target);
         program.side_set = SideSet::new(true, 1, false);
-        let mut program = pio.install(&program).unwrap();
+        let program = pio.install(&program).unwrap();
 
-        let (mut sm, mut data_rx, mut data_tx) = rp2040_hal::pio::PIOBuilder::from_program(program)
+        let (mut sm, data_rx, data_tx) = rp2040_hal::pio::PIOBuilder::from_program(program)
             .buffers(Buffers::RxTx)
             .in_pin_base(miso_pin_id)
             .out_pins(mosi_pin_id, 1)
@@ -219,7 +214,7 @@ impl DownstreamDevice {
                 self.rx_buffer.push(event);
                 Ok(())
             }
-            Err(e) => Err(DownstreamError::InvalidMessage),
+            Err(_e) => Err(DownstreamError::InvalidMessage),
         }
     }
 

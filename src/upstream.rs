@@ -1,4 +1,3 @@
-use super::spi::SPIUpstream;
 use negicon_protocol::{negicon_event::NegiconEvent, ringbuf::RingBuffer, InvalidMessage};
 
 use defmt::Format;
@@ -121,31 +120,4 @@ pub(crate) enum UpstreamError {
     BufferOverflow,
     InvalidMessage(InvalidMessage),
     Generic,
-}
-
-impl<'a, D, P, const SIZE: usize> UpstreamInterface<SIZE> for SPIUpstream<D, P>
-where
-    D: SpiDevice,
-    P: ValidSpiPinout<D>,
-{
-    fn poll(
-        &mut self,
-        tx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
-        rx_buffer: &mut RingBuffer<[u8; 8], SIZE>,
-    ) -> Result<(), UpstreamError> {
-        self.read().map(|data| {
-            for _byte in data.iter() {
-                let _ = rx_buffer.push(data);
-            }
-        });
-        if let Some(event) = tx_buffer.peek() {
-            match self.send(event) {
-                Ok(_) => {
-                    tx_buffer.discard();
-                }
-                Err(_e) => return Err(UpstreamError::Generic),
-            }
-        }
-        Ok(())
-    }
 }

@@ -35,7 +35,7 @@ frunk = { version = "0.4", default-features = false }
 ux = { version = "0.1.5", default-features = false }
 nb = { version = "1.1.0", features = ["defmt-0-3"] }
 pio = "0.2.1"
-panic-usb-boot = "0.3.0"
+#panic-usb-boot = "0.3.0"
 
 # cargo build/run
 [profile.dev]

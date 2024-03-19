@@ -4,14 +4,16 @@
 #![no_std]
 #![no_main]
 
-extern crate panic_usb_boot;
+//extern crate panic_usb_boot;
 use defmt::{debug, info, warn, Debug2Format};
 use defmt_rtt as _;
 
 use embedded_alloc::Heap;
-use embedded_hal::{digital::v2::PinState, spi::MODE_1, timer::CountDown};
-use fugit::{ExtU32, RateExtU32};
+use embedded_hal::timer::CountDown;
+use fugit::ExtU32;
 use negicon_protocol::negicon_event::{NegiconEvent, NegiconEventType};
+use panic_probe as _;
+//use panic_usb_boot as _;
 
 use usb_device::{
     class_prelude::UsbBusAllocator,
@@ -24,11 +26,10 @@ use rp2040_hal as hal;
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
     entry,
-    gpio::{FunctionPio0, FunctionSpi, Pins},
+    gpio::{FunctionPio0, Pins},
     pac,
     pio::PIOExt,
     rom_data::reset_to_usb_boot,
-    spi::FrameFormat,
     usb::UsbBus,
     watchdog::Watchdog,
     Sio, Timer,
@@ -39,15 +40,12 @@ use usbd_human_interface_device::{
     usb_class::UsbHidClassBuilder,
 };
 
-pub mod downstream;
-pub mod upstream;
+mod spi_downstream;
+mod upstream;
 
 use crate::{
-    downstream::spi_downstream::DownstreamDevice,
-    upstream::{
-        spi::SPIUpstream,
-        upstream::{Upstream, UsbUpstream},
-    },
+    spi_downstream::DownstreamDevice,
+    upstream::{Upstream, UsbUpstream},
 };
 
 #[global_allocator]
@@ -141,7 +139,7 @@ fn main() -> ! {
         )
         .build(&usb_bus);
 
-    let (mut pio0, mut sm0, mut sm1, mut sm2, mut sm3) = pac.PIO0.split(&mut pac.RESETS);
+    let (pio0, sm0, sm1, sm2, _sm3) = pac.PIO0.split(&mut pac.RESETS);
     pins.gpio18.into_function::<FunctionPio0>();
     pins.gpio19.into_function::<FunctionPio0>();
     pins.gpio20.into_function::<FunctionPio0>();
@@ -155,8 +153,7 @@ fn main() -> ! {
     pins.gpio28.into_function::<FunctionPio0>();
     pins.gpio29.into_function::<FunctionPio0>();
 
-    let mut downstreamInterface =
-        downstream::spi_downstream::PioSpiDownstream::new(pio0, sm0, sm1, sm2);
+    let mut downstream_interface = spi_downstream::PioSpiDownstream::new(pio0, sm0, sm1, sm2);
     let mut tick_timer = timer.count_down();
     let mut ping_timer = timer.count_down();
     tick_timer.start(5.millis());
@@ -169,15 +166,6 @@ fn main() -> ! {
         .build();
     let mut usb_upstream = UsbUpstream::new(hid, usb_dev);
     let _i = 0u8;
-
-    let spi_sclk = pins.gpio10.into_function::<FunctionSpi>();
-    let spi_mosi = pins.gpio11.into_function::<FunctionSpi>();
-    let spi_miso = pins.gpio12.into_function::<FunctionSpi>();
-    let mut _spi1_cs = pins.gpio13.into_function::<FunctionSpi>();
-    /*let upward_spi = hal::Spi::new(pac.SPI1, (spi_mosi, spi_miso, spi_sclk))
-        .init_slave(&mut pac.RESETS, FrameFormat::MotorolaSpi(MODE_1));
-
-    let mut _spi_upstream = SPIUpstream::new(upward_spi);*/
 
     let mut downstreams = [
         DownstreamDevice::new(0),
@@ -249,10 +237,10 @@ fn main() -> ! {
             Ok(_) => {
                 tick_timer.start(5.millis());
                 for ds in downstreams.iter_mut() {
-                    match ds.poll(&mut delay, &mut downstreamInterface) {
+                    match ds.poll(&mut delay, &mut downstream_interface) {
                         Ok(_) => {}
                         Err(e) => match e {
-                            downstream::spi_downstream::DownstreamError::InvalidMessage => {}
+                            spi_downstream::DownstreamError::InvalidMessage => {}
                             _ => {
                                 warn!("Error while polling downstream: {:?}", e);
                             }
