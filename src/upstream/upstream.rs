@@ -120,6 +120,7 @@ pub(crate) enum UpstreamError {
     UsbError(UsbError),
     BufferOverflow,
     InvalidMessage(InvalidMessage),
+    Generic,
 }
 
 impl<'a, D, P, const SIZE: usize> UpstreamInterface<SIZE> for SPIUpstream<D, P>
@@ -142,7 +143,7 @@ where
                 Ok(_) => {
                     tx_buffer.discard();
                 }
-                Err(_e) => return Err(UpstreamError::SpiError),
+                Err(_e) => return Err(UpstreamError::Generic),
             }
         }
         Ok(())

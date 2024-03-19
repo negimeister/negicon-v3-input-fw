@@ -150,8 +150,13 @@ fn main() -> ! {
     pins.gpio23.into_function::<FunctionPio0>();
     pins.gpio24.into_function::<FunctionPio0>();
     pins.gpio25.into_function::<FunctionPio0>();
+    pins.gpio26.into_function::<FunctionPio0>();
+    pins.gpio27.into_function::<FunctionPio0>();
+    pins.gpio28.into_function::<FunctionPio0>();
+    pins.gpio29.into_function::<FunctionPio0>();
 
-    let mut downstreamInterface = downstream::spi_downstream::PioSpiDownstream::new(pio0, sm0, sm1);
+    let mut downstreamInterface =
+        downstream::spi_downstream::PioSpiDownstream::new(pio0, sm0, sm1, sm2);
     let mut tick_timer = timer.count_down();
     let mut ping_timer = timer.count_down();
     tick_timer.start(5.millis());
@@ -177,7 +182,7 @@ fn main() -> ! {
     let mut downstreams = [
         DownstreamDevice::new(0),
         DownstreamDevice::new(1),
-        /*DownstreamDevice::new(2),
+        DownstreamDevice::new(2),
         DownstreamDevice::new(3),
         DownstreamDevice::new(4),
         DownstreamDevice::new(5),
@@ -206,7 +211,7 @@ fn main() -> ! {
         DownstreamDevice::new(28),
         DownstreamDevice::new(29),
         DownstreamDevice::new(30),
-        DownstreamDevice::new(31),*/
+        DownstreamDevice::new(31),
     ];
     let controller_id = 0u8;
     let mut upstreams = [
@@ -245,11 +250,21 @@ fn main() -> ! {
                 tick_timer.start(5.millis());
                 for ds in downstreams.iter_mut() {
                     match ds.poll(&mut delay, &mut downstreamInterface) {
-                        Ok(res) => {
-                            debug!("Received event from downstream {:?}", Debug2Format(&res));
-                            if !res.is_ping() {
+                        Ok(_) => {}
+                        Err(e) => match e {
+                            downstream::spi_downstream::DownstreamError::InvalidMessage => {}
+                            _ => {
+                                warn!("Error while polling downstream: {:?}", e);
+                            }
+                        },
+                    }
+                    match ds.receive() {
+                        Ok(None) => {}
+                        Ok(Some(e)) => {
+                            debug!("Received event from downstream {:?}", Debug2Format(&e));
+                            if !e.is_ping() {
                                 for up in upstreams.iter_mut() {
-                                    match up.send(&res) {
+                                    match up.send(&e) {
                                         Ok(_) => {}
                                         Err(e) => {
                                             warn!(
