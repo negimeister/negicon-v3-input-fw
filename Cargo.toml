@@ -20,7 +20,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 usb-device = {version="0.2.9", features=["defmt"]}
 ws2812-pio = "0.7.0"
 smart-leds = "0.3.0"
-usbd-human-interface-device = "0.4.3"
+usbd-human-interface-device = "0.4.4"
 fugit = "0.3.7"
 embedded-alloc = "0.5.1"
 
